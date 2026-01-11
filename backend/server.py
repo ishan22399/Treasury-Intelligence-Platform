@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -187,6 +188,27 @@ async def root():
             "Data Validation",
             "Analytics"
         ]
+    }
+
+@api_router.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        # Check MongoDB connection
+        await db.command("ping")
+        db_status = "healthy"
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        db_status = "unhealthy"
+    
+    return {
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0",
+        "services": {
+            "database": db_status,
+            "api": "healthy"
+        }
     }
 
 # ============= MASTER DATA SETUP =============
@@ -705,12 +727,38 @@ async def get_validation_report():
 
 # ============= DATA IMPORT =============
 
+# File upload constraints
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS = {'.xlsx', '.xls', '.csv'}
+
 @api_router.post("/treasury/import/upload")
 async def upload_data(file: UploadFile = File(...), data_type: str = Form(...)):
     """Upload Excel or CSV file to import data"""
     try:
+        logger.info(f"File upload started: {file.filename}, type: {data_type}")
+        
+        # Validate file extension
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            logger.warning(f"Invalid file type: {file_ext}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported file format. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            )
+        
         # Read file content
         content = await file.read()
+        
+        # Validate file size
+        file_size = len(content)
+        if file_size > MAX_FILE_SIZE:
+            logger.warning(f"File too large: {file_size} bytes")
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size: {MAX_FILE_SIZE / (1024*1024):.1f}MB"
+            )
+        
+        logger.info(f"File validated: {file_size} bytes")
         
         # Determine file type and read accordingly
         if file.filename.endswith(('.xlsx', '.xls')):
@@ -785,6 +833,7 @@ async def upload_data(file: UploadFile = File(...), data_type: str = Form(...)):
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported data type: {data_type}")
         
+        logger.info(f"Successfully imported {records_imported} records of type {data_type}")
         return {
             "status": "success",
             "message": f"Successfully imported {records_imported} records",
@@ -795,6 +844,7 @@ async def upload_data(file: UploadFile = File(...), data_type: str = Form(...)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Import failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
 @api_router.get("/treasury/import/api-info")
@@ -815,6 +865,55 @@ async def get_api_info():
         "rate_limit": "None",
         "documentation": f"{os.environ.get('API_BASE_URL', 'http://localhost:5000')}/docs"
     }
+
+@api_router.get("/treasury/export/{data_type}")
+async def export_data(data_type: str):
+    """Export data to Excel file"""
+    try:
+        logger.info(f"Export requested for: {data_type}")
+        
+        # Fetch data based on type
+        if data_type == "cash_balances":
+            data = await db.cash_balances.find({}, {"_id": 0}).to_list(10000)
+        elif data_type == "bank_accounts":
+            data = await db.bank_accounts.find({}, {"_id": 0}).to_list(10000)
+        elif data_type == "entities":
+            data = await db.entities.find({}, {"_id": 0}).to_list(10000)
+        elif data_type == "fx_rates":
+            data = await db.fx_rates.find({}, {"_id": 0}).to_list(10000)
+        elif data_type == "netting_results":
+            data = await db.netting_results.find({}, {"_id": 0}).to_list(10000)
+        elif data_type == "validation_logs":
+            data = await db.validation_logs.find({}, {"_id": 0}).to_list(10000)
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid data type: {data_type}")
+        
+        if not data:
+            raise HTTPException(status_code=404, detail="No data found to export")
+        
+        # Convert to DataFrame and Excel
+        df = pd.DataFrame(data)
+        
+        # Create Excel file in memory
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name=data_type)
+        output.seek(0)
+        
+        logger.info(f"Export successful: {len(data)} records")
+        
+        # Return as downloadable file
+        filename = f"{data_type}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 # ============= ANALYTICS & REPORTING =============
 
@@ -900,12 +999,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Logging
+# Configure comprehensive logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('treasury_app.log')
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Log startup
+logger.info("=" * 50)
+logger.info("Treasury Intelligence Platform Starting")
+logger.info(f"MongoDB URL: {mongo_url[:20]}...")
+logger.info(f"Database: {os.environ['DB_NAME']}")
+logger.info("=" * 50)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

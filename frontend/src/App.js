@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import "@/App.css";
 import axios from "axios";
-import { DollarSign, Activity, AlertTriangle, Database, Upload, Layers, BarChart3, Menu, X } from "lucide-react";
+import { DollarSign, Activity, AlertTriangle, Database, Upload, Layers, BarChart3, Menu, X, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Toaster, toast } from "sonner";
 import Dashboard from "@/pages/Dashboard";
 import Liquidity from "@/pages/Liquidity";
 import CashPooling from "@/pages/CashPooling";
@@ -18,6 +19,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('tapp-theme') || 'light';
+  });
   
   // Data states
   const [globalPosition, setGlobalPosition] = useState(null);
@@ -27,6 +31,18 @@ function App() {
   const [analytics, setAnalytics] = useState(null);
   const [trends, setTrends] = useState(null);
   const [regionalData, setRegionalData] = useState({ APAC: null, EMEA: null, AMER: null });
+
+  // Apply theme on mount and change
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    localStorage.setItem('tapp-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   // Initialize system with sample data
   const initializeSystem = async () => {
@@ -39,9 +55,14 @@ function App() {
       
       setInitialized(true);
       await loadAllData();
+      toast.success('System initialized successfully!', {
+        description: 'Sample data loaded and ready to use'
+      });
     } catch (error) {
       console.error('Error initializing system:', error);
-      alert('Failed to initialize. Please check backend connection.');
+      toast.error('Failed to initialize system', {
+        description: error.response?.data?.detail || 'Please check backend connection.'
+      });
     }
     setLoading(false);
   };
@@ -73,8 +94,12 @@ function App() {
         EMEA: emea.data,
         AMER: amer.data
       });
+      toast.success('Data refreshed successfully');
     } catch (error) {
       console.error('Error loading data:', error);
+      toast.error('Failed to load data', {
+        description: error.response?.data?.detail || error.message
+      });
     }
     setLoading(false);
   };
@@ -136,115 +161,135 @@ function App() {
 
   if (!initialized) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-2xl text-center">
-          <Database className="h-20 w-20 text-blue-600 mx-auto mb-6" />
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">
-            Global Treasury Intelligence Platform
-          </h1>
-          <p className="text-gray-600 mb-8 text-lg">
-            Automated liquidity management, cash pooling, and netting system
-          </p>
-          <div className="space-y-4 text-left mb-8 bg-blue-50 p-6 rounded-lg">
-            <h3 className="font-semibold text-lg mb-3">Features:</h3>
-            <ul className="space-y-2 text-gray-700">
-              <li className="flex items-center gap-2">
-                <span className="text-blue-600">✓</span> Real-time liquidity monitoring across regions
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="text-blue-600">✓</span> Automated cash pooling optimization
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="text-blue-600">✓</span> Inter-company netting automation
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="text-blue-600">✓</span> Excel/CSV data import
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="text-blue-600">✓</span> Power BI/API connectivity
-              </li>
-            </ul>
+      <>
+        <Toaster position="top-right" />
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-12 max-w-2xl text-center">
+            <Database className="h-20 w-20 text-blue-600 dark:text-blue-400 mx-auto mb-6" />
+            <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100 mb-4">
+              Global Treasury Intelligence Platform
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-8 text-lg">
+              Automated liquidity management, cash pooling, and netting system
+            </p>
+            <div className="space-y-4 text-left mb-8 bg-blue-50 dark:bg-gray-700 p-6 rounded-lg">
+              <h3 className="font-semibold text-lg mb-3 dark:text-gray-200">Features:</h3>
+              <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">✓</span> Real-time liquidity monitoring across regions
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">✓</span> Automated cash pooling optimization
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">✓</span> Inter-company netting automation
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">✓</span> Excel/CSV data import
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">✓</span> Power BI/API connectivity
+                </li>
+              </ul>
+            </div>
+            <Button
+              onClick={initializeSystem}
+              disabled={loading}
+              size="lg"
+              className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 px-8 py-6 text-lg"
+            >
+              {loading ? 'Initializing...' : 'Initialize with Sample Data'}
+            </Button>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+              Or use the Import feature to load your own data from Excel/CSV
+            </p>
           </div>
-          <Button
-            onClick={initializeSystem}
-            disabled={loading}
-            size="lg"
-            className="bg-blue-600 hover:bg-blue-700 px-8 py-6 text-lg"
-          >
-            {loading ? 'Initializing...' : 'Initialize with Sample Data'}
-          </Button>
-          <p className="text-sm text-gray-500 mt-4">
-            Or use the Import feature to load your own data from Excel/CSV
-          </p>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-gray-900 text-white transition-all duration-300 overflow-hidden`}>
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-8">
-            <h1 className="text-xl font-bold">Treasury Platform</h1>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
-              <X size={20} />
-            </button>
+    <>
+      <Toaster position="top-right" />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+        {/* Sidebar */}
+        <div className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-gray-900 dark:bg-gray-950 text-white transition-all duration-300 overflow-hidden`}>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-8">
+              <h1 className="text-xl font-bold">Treasury Platform</h1>
+              <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
+                <X size={20} />
+              </button>
+            </div>
+
+            <nav className="space-y-2">
+              {navigationItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveView(item.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      activeView === item.id
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-300 hover:bg-gray-800 dark:hover:bg-gray-900'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-
-          <nav className="space-y-2">
-            {navigationItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveView(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    activeView === item.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-800'
-                  }`}
-                >
-                  <Icon size={20} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <div className="bg-white shadow-sm border-b px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-gray-100 rounded-lg"
-            >
-              <Menu size={24} />
-            </button>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">
-                {navigationItems.find(item => item.id === activeView)?.label}
-              </h2>
-              <p className="text-sm text-gray-600">
-                Connected to: {BACKEND_URL}
-              </p>
+        {/* Main Content */}
+        <div className="flex-1 overflow-auto">
+          <div className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                <Menu size={24} />
+              </button>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                  {navigationItems.find(item => item.id === activeView)?.label}
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Connected to: {BACKEND_URL}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle theme"
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                ) : (
+                  <Sun className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                )}
+              </button>
+              <Button onClick={loadAllData} variant="outline" size="sm">
+                Refresh Data
+              </Button>
             </div>
           </div>
-          <Button onClick={loadAllData} variant="outline" size="sm">
-            Refresh Data
-          </Button>
-        </div>
 
-        <div className="p-6">
-          {renderContent()}
+          <div className="p-6">
+            {renderContent()}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
 export default App;
+
